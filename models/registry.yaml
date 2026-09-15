@@ -3,7 +3,7 @@
 convmamba-human-grch38:
   model: convmamba
   url: https://github.com/hibiki-kato/sitescore/releases/download/convmamba-human-grch38-v1/convmamba-human-grch38.tar.gz
-  sha256: 0db2ac0540cebb4cec5cde34f3067cc3172e3af7abbde3f7f15af3a3aafeeea9
+  sha256: 46ee3d3cb84fb1f8b3139914775abaacb6c7fedb60a7955150fee7fc15990964
   size_mb: 104
   trained_on: human GRCh38.p14 (all chromosomes incl. chr1), EviAnn labels; validation chr5/9/10/22
   author: Chirag Adwani (https://github.com/divide-by-zer0)
