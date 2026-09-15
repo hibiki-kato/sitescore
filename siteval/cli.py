@@ -10,9 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from Bio import SeqIO
-
-from .interface import write_scores
+from .interface import read_fasta, write_scores
 from .registry import get_model, list_models
 
 CONFIG = "siteval.json"   # written into every model_dir: {"model": name, "hparams": {...}}
@@ -22,18 +20,18 @@ def cmd_train(a):
     cls = get_model(a.model)
     hparams = json.loads(a.hparams) if a.hparams else {}
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    (out / CONFIG).write_text(json.dumps({"model": a.model, "hparams": hparams}, indent=2))
     cls.train(Path(a.genome), Path(a.annotation), out,
               init_dir=Path(a.init) if a.init else None, **hparams)
-    (out / CONFIG).write_text(json.dumps({"model": a.model, "hparams": hparams}, indent=2))
 
 
 def cmd_score(a):
     md = Path(a.model_dir)
     cfg = json.loads((md / CONFIG).read_text())
     model = get_model(cfg["model"]).load(md)
-    strands = tuple(a.strands.split(","))
-    for rec in SeqIO.parse(a.fasta, "fasta"):
-        write_scores(model.score(rec.id, str(rec.seq).upper(), strands), sys.stdout)
+    strands = tuple(c for c in a.strands if c in "+-") or ("+",)
+    write_scores((s for cid, seq in read_fasta(a.fasta) for s in model.score(cid, seq, strands)),
+                 sys.stdout)
 
 
 def cmd_models(a):
@@ -57,7 +55,7 @@ def main(argv=None):
     s = sp.add_parser("score"); s.set_defaults(fn=cmd_score)
     s.add_argument("--model-dir", required=True)
     s.add_argument("--fasta", required=True)
-    s.add_argument("--strands", default="+", help='comma list, default "+" (all UniAnn uses today)')
+    s.add_argument("--strands", default="+-", help='"+", "-" or "+-" (default)')
 
     m = sp.add_parser("models"); m.set_defaults(fn=cmd_models)
 

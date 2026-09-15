@@ -56,6 +56,21 @@ class SiteModel(ABC):
         """Yield one SiteScore per candidate motif on the requested strands."""
 
 
+def read_fasta(path: Path) -> Iterator[tuple[str, str]]:
+    """Yield (id, upper-case sequence) per record; no third-party dependency."""
+    cid, chunks = None, []
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                if cid is not None:
+                    yield cid, "".join(chunks).upper()
+                cid, chunks = line[1:].split()[0], []
+            else:
+                chunks.append(line.strip())
+    if cid is not None:
+        yield cid, "".join(chunks).upper()
+
+
 def write_scores(scores: Iterable[SiteScore], out) -> int:
     """Write the header + rows to a text handle; returns row count."""
     out.write("\t".join(SCORE_COLUMNS) + "\n")
