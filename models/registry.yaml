@@ -2,7 +2,7 @@
 # and verifies one into models/<name>/.
 convmamba-human-grch38:
   model: convmamba
-  url: https://github.com/hibiki-kato/sitescore/releases/download/convmamba-human-grch38-v1/convmamba-human-grch38.tar.gz
+  url: https://github.com/hibiki-kato/sitescore/releases/download/convmamba-human-grch38-v1/convmamba-human-grch38.v1.tar.gz
   sha256: 46ee3d3cb84fb1f8b3139914775abaacb6c7fedb60a7955150fee7fc15990964
   size_mb: 104
   trained_on: human GRCh38.p14 (all chromosomes incl. chr1), EviAnn labels; validation chr5/9/10/22
