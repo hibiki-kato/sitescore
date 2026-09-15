@@ -1,0 +1,9 @@
+# Process environment for ChimAnn's SITEVAL_* stages. Add the model's deps
+# (torch, mamba-ssm, ...) here when the SSM code lands.
+name: siteval
+channels: [conda-forge]
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - -e .
