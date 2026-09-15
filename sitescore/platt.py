@@ -1,4 +1,5 @@
-"""Platt scaling with Platt's Bayes/Laplace target priors.
+"""Original code by Chirag Adwani (https://github.com/divide-by-zer0).
+Platt scaling with Platt's Bayes/Laplace target priors.
 
 Recalibrates a model's positive-class probabilities ``p`` in (0, 1) by fitting a
 two-parameter logistic map on the recovered model logit ``z = log(p / (1 - p))``:

@@ -54,3 +54,11 @@ with `mamba-ssm`; `{"mamba_backend": "reference"}` runs on CPU for smoke tests.
 - ChimAnn runs `sitescore` as a separate Nextflow stage.
 - Final product: folded into UniAnn (evaluator + PSAURON + Viterbi/k-Viterbi)
   as the module that takes EviAnn GFF + genome and emits missing CDS as GFF.
+
+## Credits
+The `convmamba` model (`sitescore/models/convmamba/`: architecture, data
+builder, training loop, checkpoints) and the Platt calibration
+(`sitescore/platt.py`, the logic in `sitescore/calibration.py`) were written by
+[Chirag Adwani (@divide-by-zer0)](https://github.com/divide-by-zer0) for the
+UniAnn site-scoring experiments; sitescore packages that code behind the
+`SiteModel` interface. Remaining code by Hibiki Kato.

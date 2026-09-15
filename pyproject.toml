@@ -3,6 +3,10 @@ name = "sitescore"
 version = "0.1.0"
 description = "Pluggable scorer for donor/acceptor/start/stop sites; emits UniAnn score tables"
 requires-python = ">=3.10"
+authors = [
+  {name = "Hibiki Kato"},
+  {name = "Chirag Adwani (divide-by-zer0)"},
+]
 dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]

@@ -1,4 +1,5 @@
 """Per-type Platt scaling of evaluator probabilities against EviAnn truth.
+Adapted from calibrate_multi.py by Chirag Adwani (https://github.com/divide-by-zer0).
 
 Pooled fit over
 validation sequences, truth = annotated sites matched by exact genomic position.
