@@ -1,4 +1,4 @@
-from siteval.models.ssm.adapter import _resolve_alpha, choose_val_chroms
+from sitescore.models.convmamba.adapter import _resolve_alpha, choose_val_chroms
 
 
 def test_choose_val_holds_out_smallest_until_fraction():

@@ -1,11 +1,5 @@
-"""Candidate losses, metrics, optimization, and checkpoint helpers.
-
-V8S5 differs from V8S3 in exactly one place: ``v8s5_candidate_loss``
-replaces the hard 0/1 cross-entropy with an asymmetric soft target, and
-the training/eval loops carry the per-base trusted mask that decides which
-candidates get the smoothed target. Everything else in this file is
-byte-identical to V8S3.
-"""
+"""Fine-tuning loop, candidate-masked loss with asymmetric label smoothing,
+validation metrics and checkpointing for the convmamba site model."""
 
 import contextlib
 import json
@@ -15,7 +9,7 @@ import tempfile
 import time
 from pathlib import Path
 
-_CACHE_DIR = Path(tempfile.gettempdir()) / "dmel-v8s2-mpl-cache"
+_CACHE_DIR = Path(tempfile.gettempdir()) / "sitescore-mpl-cache"
 os.environ.setdefault("MPLCONFIGDIR", str(_CACHE_DIR))
 os.environ.setdefault("XDG_CACHE_HOME", str(_CACHE_DIR))
 import matplotlib
@@ -77,7 +71,7 @@ def site_targets(splice_labels, start_stop_labels):
 
 def v7_candidate_loss(logits, sequence, splice_labels, start_stop_labels):
     if logits.ndim != 4 or logits.shape[2:] != (4, 2):
-        raise ValueError(f"expected V8S2 logits (B,T,4,2), got {tuple(logits.shape)}")
+        raise ValueError(f"expected site logits (B,T,4,2), got {tuple(logits.shape)}")
     motifs = candidate_masks(sequence)
     targets = site_targets(splice_labels, start_stop_labels)
     losses = {}
@@ -106,14 +100,14 @@ def binary_entropy(rate):
 
     A soft target of ``alpha`` cannot be fit to zero loss: the best achievable
     per-candidate loss is ``H(alpha)``. Reporting that floor alongside the loss
-    keeps V8S5's numbers readable next to V8S3's, which have a floor of 0.
+    keeps the numbers comparable with a hard-label (alpha = 0) run.
     """
     if rate <= 0.0 or rate >= 1.0:
         return 0.0
     return -(rate * math.log(rate) + (1.0 - rate) * math.log1p(-rate))
 
 
-def v8s5_candidate_loss(
+def smoothed_candidate_loss(
     logits,
     sequence,
     splice_labels,
@@ -135,7 +129,7 @@ def v8s5_candidate_loss(
 
     and the loss is the binary cross-entropy against that target,
     ``-[y log p + (1 - y) log(1 - p)]``, averaged over the candidates of a site
-    type and then over the four site types: exactly the reduction V8S3 uses,
+    type and then over the four site types: the same reduction as the hard-label loss,
     with only the target changed.
 
     Why this loss:
@@ -152,7 +146,7 @@ def v8s5_candidate_loss(
       prior on the unlabelled set, not an ad-hoc regulariser.
     * With ``trusted=None``, ``alpha=None`` or an all-zero ``alpha`` it reduces
       to ``v7_candidate_loss`` exactly, which makes ``--alpha-mode zero`` a
-      clean, bit-comparable ablation against V8S3.
+      clean ablation against the hard-label loss (alpha = 0).
 
     ``soft_weight`` scales the contribution of the smoothed candidates only
     (1.0 = untouched); it is a separate knob from ``alpha`` because it changes
@@ -166,7 +160,7 @@ def v8s5_candidate_loss(
     on excess loss pick the same epoch.
     """
     if logits.ndim != 4 or logits.shape[2:] != (4, 2):
-        raise ValueError(f"expected V8S2 logits (B,T,4,2), got {tuple(logits.shape)}")
+        raise ValueError(f"expected site logits (B,T,4,2), got {tuple(logits.shape)}")
     motifs = candidate_masks(sequence)
     targets = site_targets(splice_labels, start_stop_labels)
     untrusted = None if trusted is None else ~trusted.bool()
@@ -232,7 +226,7 @@ def v8s5_candidate_loss(
     return losses
 
 
-candidate_loss = v8s5_candidate_loss
+candidate_loss = smoothed_candidate_loss
 
 
 def v6_candidate_loss(outputs, sequence, splice_labels, start_stop_labels):
@@ -263,24 +257,10 @@ def v6_candidate_loss(outputs, sequence, splice_labels, start_stop_labels):
     }
 
 
-def output_site_probabilities(outputs, model_kind):
-    if model_kind in {"v7", MODEL_KIND}:
-        probabilities = torch.softmax(outputs.float(), dim=-1)[..., 1]
-        return {
-            name: probabilities[:, :, index]
-            for index, name in enumerate(SITE_NAMES)
-        }
-    if model_kind == "v6_control":
-        splice, start_stop = outputs
-        splice = torch.softmax(splice.float(), dim=-1)
-        start_stop = torch.softmax(start_stop.float(), dim=-1)
-        return {
-            "donor": splice[..., 1],
-            "acceptor": splice[..., 2],
-            "start": start_stop[..., 1],
-            "stop": start_stop[..., 2],
-        }
-    raise ValueError(f"unknown model kind: {model_kind}")
+def output_site_probabilities(outputs, model_kind=None):
+    """(B, L, 4, 2) logits -> per-type P(site) tensors."""
+    probabilities = torch.softmax(outputs.float(), dim=-1)[..., 1]
+    return {name: probabilities[:, :, index] for index, name in enumerate(SITE_NAMES)}
 
 
 def threshold_metrics(scores, truth, thresholds):
@@ -360,7 +340,7 @@ def evaluate(
         with autocast_context(device, amp):
             outputs = model(sequence)
             losses = (
-                v8s5_candidate_loss(
+                smoothed_candidate_loss(
                     outputs,
                     sequence,
                     splice_labels,
@@ -369,7 +349,7 @@ def evaluate(
                     alpha,
                     soft_weight,
                 )
-                if model_kind in {"v7", MODEL_KIND}
+                if True
                 else v6_candidate_loss(
                     outputs, sequence, splice_labels, start_stop_labels
                 )
@@ -754,7 +734,7 @@ def train_model(
                 with autocast_context(device, amp):
                     outputs = model(sequence)
                     losses = (
-                        v8s5_candidate_loss(
+                        smoothed_candidate_loss(
                             outputs,
                             sequence,
                             splice_labels,
@@ -763,7 +743,7 @@ def train_model(
                             alpha,
                             soft_weight,
                         )
-                        if model_kind in {"v7", MODEL_KIND}
+                        if True
                         else v6_candidate_loss(
                             outputs,
                             sequence,

@@ -1,5 +1,5 @@
-# Process environment for ChimAnn's SITEVAL_* stages (GPU host).
-name: siteval
+# Process environment for ChimAnn's SITESCORE_* stages (GPU host).
+name: sitescore
 channels: [conda-forge, pytorch, nvidia]
 dependencies:
   - python=3.10

@@ -1,8 +1,8 @@
-"""siteval train | calibrate | score | models
+"""sitescore train | calibrate | score | models
 
-  siteval train     --model ssm --genome g.fna --annotation eviann.gff --out model_dir [--init base_model_dir]
-  siteval calibrate --model-dir model_dir --genome g.fna --annotation eviann.gff [--chroms a,b]
-  siteval score     --model-dir model_dir --fasta seq.fa [--strands +-] [--raw] > sites.tsv
+  sitescore train     --model convmamba --genome g.fna --annotation eviann.gff --out model_dir [--init base_model_dir]
+  sitescore calibrate --model-dir model_dir --genome g.fna --annotation eviann.gff [--chroms a,b]
+  sitescore score     --model-dir model_dir --fasta seq.fa [--strands +-] [--raw] > sites.tsv
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from . import calibration
 from .interface import read_fasta, write_scores
 from .registry import get_model, list_models
 
-CONFIG = "siteval.json"   # written into every model_dir: {"model": name, "hparams": {...}}
+CONFIG = "sitescore.json"   # written into every model_dir: {"model": name, "hparams": {...}}
 
 
 def cmd_train(a):
@@ -69,7 +69,7 @@ def cmd_models(a):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="siteval", description=__doc__,
+    p = argparse.ArgumentParser(prog="sitescore", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = p.add_subparsers(dest="cmd", required=True)
 

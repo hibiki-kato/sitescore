@@ -1,62 +1,10 @@
-"""Supervised and MLM data builders/loaders for the Hsap V8S5 run.
+"""Supervised window builder and dataset loaders for the convmamba site model.
 
-V8S5 is the V8S2 architecture (Conv stem + pure bidirectional-Mamba3 context
-stack) on the **s3 window set** -- every non-gap window is kept -- with an
-**asymmetric label-smoothing target** replacing the hard 0/1 supervision.
-
-    window selection   identical to V8S3 (gap rule only)
-    targets            y = 1      EviAnn positive site
-                       y = 0      candidate inside an EviAnn CDS locus
-                       y = alpha  candidate outside every EviAnn CDS locus
-
-The middle row is the s4 insight applied per *candidate* instead of per
-*window*: inside an annotated coding locus EviAnn has already resolved the
-exon/intron structure, so an unannotated GT there really is not a donor. The
-third row is the admission that outside those loci the annotation is silent --
-a GT in bulk intergenic sequence may well be a donor of a gene EviAnn missed,
-so calling it a hard negative is a lie the model is forced to fit. s3 tells
-that lie ~1.5 billion times per epoch, which is what drives its background
-probabilities to underflow UniAnn's log floor.
-
-Everything the *builder* has to add for that is one extra per-window array:
-which bases of the window lie inside an EviAnn CDS locus on the window's own
-strand. It is stored as clipped **intervals** (CSR ``indptr``/``start``/``end``)
-rather than a bitmap, because CDS loci are long runs -- typically 0-3 per 10 kb
-window, so the whole train split costs ~20 MB instead of 1.3 GB.
-
-The builder also estimates the smoothing constants ``alpha`` themselves, from
-the **RefSeq reference annotation** on the training chromosomes only, and
-records them in ``stats.json``. Two estimates are stored:
-
-    global        P(RefSeq site | candidate)                       per site type
-    conditional   P(RefSeq site | candidate, outside EviAnn CDS)   per site type
-
-``conditional`` is the default the trainer uses: it is the expected value of
-the unknown label on exactly the population being smoothed, so it is the
-Bayes-optimal constant target for that population. Using RefSeq at all is
-deliberate leakage ("cheating"), confined to four scalars and confined to the
-training chromosomes -- chr1 and the four validation chromosomes contribute
-nothing to it. See ``README.md`` for how to replace it with a non-leaking
-estimate later.
-
-The builder **streams**, exactly as in V8S3/V8S4:
-
-1. Pass 1 decides which windows survive (gap rule only) and how many land in
-   each split, without touching labels.
-2. The sequences are written straight into an on-disk ``.npy`` opened with
-   ``np.lib.format.open_memmap`` and filled row by row.
-3. Labels are stored **sparsely** (CSR-style ``indptr``/``col``/``val``); the
-   trusted regions are stored as CSR intervals.
-
-Layout written per split (``train`` / ``val``):
-
-    <split>_sequence.npy   int8 (n_windows, window) -- memory-mapped at train time
-    <split>_meta.npz       sparse labels + trusted intervals + chrom / strand /
-                           window_start
-
-``build_mlm_profile`` is unchanged from V8S2 and still writes ``{split}.npz``;
-V8S5 reuses the V8S2 MLM checkpoint, so it normally never runs.
-"""
+Windows: every non-gap 10 kb window (stride 5 kb), both strands.
+Labels: donor/acceptor (CDS-internal canonical introns) and start/stop from
+the annotation; a per-window trusted mask marks bases inside an annotated
+CDS locus, where an unlabelled candidate is a true negative. Candidates
+outside trusted regions are label-smoothed to alpha at training time."""
 
 import json
 import math
@@ -67,7 +15,7 @@ import torch
 from torch.utils.data import Dataset
 
 from . import common
-from .profiles import TEST_ACCESSION, get_profile
+from .adapter_profile import get_profile
 
 
 SUPERVISED_FORMAT = "streaming_sparse_trusted_v1"
@@ -275,8 +223,7 @@ def _load_split(data_dir, split, window=common.WINDOW_SIZE):
     )
     if "trusted_indptr" not in meta:
         raise ValueError(
-            f"{meta_path} has no trusted-region block. This is a V8S3/V8S4 "
-            "build; V8S5 needs its own supervised data. Rebuild with "
+            f"{meta_path} has no trusted-region block (old data format). Rebuild with "
             "scripts/make_train_data.py."
         )
     trusted = TrustedRegionStore(
@@ -286,9 +233,9 @@ def _load_split(data_dir, split, window=common.WINDOW_SIZE):
 
 
 class SupervisedWindowDataset(Dataset):
-    """Windows for V8S5: sequence, both label vectors, and the trusted mask.
+    """Windows: sequence, both label vectors, and the trusted mask.
 
-    The fourth tensor is what separates V8S5 from V8S3. ``True`` means "this
+    ``True`` in the fourth tensor means "this
     base lies inside an EviAnn CDS locus on this window's strand", i.e. the
     annotation is trustworthy here and an unlabelled candidate is a real
     negative. ``False`` means the annotation is silent and the candidate's
@@ -726,7 +673,7 @@ def build_supervised_profile(
     val_set = set(profile.val_chroms)
 
     # ---- pass 1: which windows survive, and how many per split ----------
-    # v8s5 keeps every window that is not a sequence gap -- the s3 rule --
+    # every window that is not a sequence gap is kept --
     # so the decision needs no labels at all; only the N-content rule applies.
     kept_starts = {}
     skipped_gap = 0
@@ -808,7 +755,7 @@ def build_supervised_profile(
                     strand,
                     window,
                 )
-                # v8s5: empty windows are kept (the s3 rule) so the model sees
+                # empty windows are kept so the model sees
                 # the true background base rate -- but their candidates are now
                 # smoothed to alpha wherever the annotation is silent.
                 if splice.sum() == 0 and start_stop.sum() == 0:
@@ -944,8 +891,7 @@ def build_mlm_profile(profile_name, fasta_path, out_dir, window=common.WINDOW_SI
         if chrom == profile.test_chrom:
             # chr1_test: the test chromosome is never seen by pretraining.
             # with_chr1: test_chrom is "" and matches nothing, so chr1 stays
-            # in the MLM corpus -- the analogue of the Dmel with_x profile's
-            # pretrain_includes_chr_x=True.
+            # in the MLM corpus.
             continue
         chroms.append(chrom)
     val_chroms = list(profile.val_chroms)
@@ -991,98 +937,3 @@ def build_mlm_profile(profile_name, fasta_path, out_dir, window=common.WINDOW_SI
     with open(out_dir / "stats.json", "w") as handle:
         json.dump(stats, handle, indent=2)
     return stats
-
-
-def validate_supervised(data_dir, profile_name):
-    profile = get_profile(profile_name)
-    errors = []
-    report = {"profile": profile.name, "format": SUPERVISED_FORMAT, "splits": {}}
-    for split, expected in (("train", profile.expected_train), ("val", profile.expected_val)):
-        sequence, splice_store, ss_store, trusted_store, meta = _load_split(
-            data_dir, split
-        )
-        chroms = set(meta["chrom"].tolist())
-        nnz = splice_store.nnz_per_row() + ss_store.nnz_per_row()
-        n_non_empty = int(np.count_nonzero(nnz))
-        covered = trusted_store.covered_per_row()
-        width = int(sequence.shape[1])
-        report["splits"][split] = {
-            "windows": int(len(sequence)),
-            "non_empty_windows": n_non_empty,
-            "expected_non_empty_windows": expected,
-            "empty_windows": int(len(sequence) - n_non_empty),
-            "windows_with_trusted_bases": int(np.count_nonzero(covered)),
-            "trusted_base_fraction": float(
-                covered.sum() / max(len(sequence) * width, 1)
-            ),
-            "chroms": sorted(common.NC_TO_NAME.get(chrom, chrom) for chrom in chroms),
-        }
-        if len(sequence) != len(splice_store) or len(sequence) != len(ss_store):
-            errors.append(f"{split}: sequence and label row counts disagree")
-        if len(sequence) != len(trusted_store):
-            errors.append(f"{split}: sequence and trusted-region row counts disagree")
-        if trusted_store.start.size:
-            if int(trusted_store.start.min()) < 0 or int(trusted_store.end.max()) > width:
-                errors.append(f"{split}: trusted interval outside the window")
-            if int((trusted_store.end <= trusted_store.start).sum()):
-                errors.append(f"{split}: empty or inverted trusted interval")
-        # v8s5 uses the s3 window rule: empty windows are intentionally kept,
-        # and the number of non-empty (positive-containing) windows should match
-        # the s2 labelled count exactly. expected is None for Hsap until a first
-        # build establishes it.
-        if expected is not None and n_non_empty != expected:
-            errors.append(
-                f"{split}: expected {expected} non-empty windows, found {n_non_empty}"
-            )
-        if split == "train" and profile.test_chrom and profile.test_chrom in chroms:
-            errors.append("train includes the test chromosome")
-        if (
-            split == "train"
-            and not profile.test_chrom
-            and TEST_ACCESSION not in chroms
-        ):
-            # The training-exposed profile has to actually expose chr1;
-            # otherwise it is a slower duplicate of chr1_test wearing the
-            # wrong label, and every number it produces is mislabeled.
-            errors.append(f"{profile.name}: train does not include chr1")
-        if split == "val" and not chroms <= set(profile.val_chroms):
-            errors.append("validation split contains non-validation chromosomes")
-    stats_path = Path(data_dir) / "stats.json"
-    if stats_path.exists():
-        stats = json.load(open(stats_path))
-        report["alpha_priors"] = stats.get("alpha_priors")
-        if stats.get("alpha_priors") is None:
-            errors.append(
-                "stats.json has no alpha_priors block; rebuild with a "
-                "--refseq-gff or pass --alpha-mode fixed at training time"
-            )
-    report["ok"] = not errors
-    report["errors"] = errors
-    return report
-
-
-def validate_mlm(data_dir, profile_name):
-    profile = get_profile(profile_name)
-    errors = []
-    report = {"profile": profile.name, "splits": {}}
-    for split in ("train", "val"):
-        data = np.load(Path(data_dir) / f"{split}.npz")
-        chroms = set(data["chrom"].tolist())
-        report["splits"][split] = {
-            "windows": int(len(data["sequence"])),
-            "chroms": sorted(common.NC_TO_NAME.get(chrom, chrom) for chrom in chroms),
-        }
-        if split == "train":
-            if chroms & set(profile.val_chroms):
-                errors.append("MLM train includes validation chromosomes")
-            if profile.test_chrom and profile.test_chrom in chroms:
-                errors.append("MLM train includes the test chromosome")
-            if not profile.test_chrom and TEST_ACCESSION not in chroms:
-                errors.append(
-                    f"{profile.name}: MLM train does not include chr1"
-                )
-        elif not chroms <= set(profile.val_chroms):
-            errors.append("MLM val contains non-validation chromosomes")
-    report["ok"] = not errors
-    report["errors"] = errors
-    return report

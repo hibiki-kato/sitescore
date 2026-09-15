@@ -1,23 +1,23 @@
 [project]
-name = "siteval"
+name = "sitescore"
 version = "0.1.0"
-description = "Pluggable evaluator for splice (donor/acceptor) and start/stop sites; emits UniAnn score tables"
+description = "Pluggable scorer for donor/acceptor/start/stop sites; emits UniAnn score tables"
 requires-python = ">=3.10"
 dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]
-ssm = ["torch>=2.6", "matplotlib", "mamba-ssm>=2.3"]
+convmamba = ["torch>=2.6", "matplotlib", "mamba-ssm>=2.3"]
 test = ["pytest"]
 
 [project.scripts]
-siteval = "siteval.cli:main"
+sitescore = "sitescore.cli:main"
 
-[project.entry-points."siteval.models"]
-ssm = "siteval.models.ssm.adapter:SSMModel"
+[project.entry-points."sitescore.models"]
+convmamba = "sitescore.models.convmamba.adapter:ConvMambaSiteModel"
 
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["siteval*"]
+include = ["sitescore*"]

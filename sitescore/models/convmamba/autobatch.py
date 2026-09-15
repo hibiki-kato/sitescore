@@ -1,4 +1,4 @@
-"""CUDA micro-batch probing for V8S2."""
+"""CUDA micro-batch probing (auto batch size) for the convmamba site model."""
 
 import contextlib
 import gc

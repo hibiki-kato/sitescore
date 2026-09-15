@@ -1,9 +1,9 @@
 """Per-type Platt scaling of evaluator probabilities against EviAnn truth.
 
-Salvaged from the v8s2 `calibration/calibrate_multi.py` driver: pooled fit over
+Pooled fit over
 validation sequences, truth = annotated sites matched by exact genomic position.
 Model-agnostic: any `SiteModel` is scored through its `score()` and the fitted
-(a, b) per site type land in `model_dir/calibration.json`; `siteval score`
+(a, b) per site type land in `model_dir/calibration.json`; `sitescore score`
 applies them unless `--raw` is given.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ CALIBRATION = "calibration.json"
 
 def annotation_truth(gff: Path, chrom: str, seq: str, require_canonical: bool = True):
     """{(strand, type): set of 1-based + strand positions} from an EviAnn GFF."""
-    from .models.ssm import common   # pure GFF/sequence helpers, no model dependency
+    from .models.convmamba import common   # pure GFF/sequence helpers, no model dependency
     fasta = {chrom: seq}
     transcripts, cds, _ = common.parse_gff3(str(gff), {chrom})
     ranges = common.compute_cds_ranges(cds)

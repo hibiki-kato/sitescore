@@ -1,4 +1,4 @@
-"""Span MLM masking, pretraining, and plots for V8S2."""
+"""Span MLM masking, pretraining, and plots for the convmamba site model."""
 
 import contextlib
 import json
@@ -8,7 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 
-_CACHE_DIR = Path(tempfile.gettempdir()) / "dmel-v8s2-mpl-cache"
+_CACHE_DIR = Path(tempfile.gettempdir()) / "sitescore-mpl-cache"
 os.environ.setdefault("MPLCONFIGDIR", str(_CACHE_DIR))
 os.environ.setdefault("XDG_CACHE_HOME", str(_CACHE_DIR))
 import matplotlib

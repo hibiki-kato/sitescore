@@ -31,7 +31,7 @@ class SiteScore:
 
 
 class SiteModel(ABC):
-    """Implement these four methods to plug a new model (SSM, LLM, PWM, ...) in.
+    """Implement these four methods to plug a new model (Conv+Mamba, LLM, PWM, ...) in.
 
     A model lives in a directory (`model_dir`) holding whatever it needs:
     weights, config, tokenizer.  `train` may start from an existing directory

@@ -1,7 +1,7 @@
 import numpy as np
-from siteval import platt
-from siteval.calibration import apply, collect
-from siteval.interface import SiteScore
+from sitescore import platt
+from sitescore.calibration import apply, collect
+from sitescore.interface import SiteScore
 
 
 def test_platt_recovers_shift():

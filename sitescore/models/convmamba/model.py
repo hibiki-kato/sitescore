@@ -1,8 +1,8 @@
-"""V8S2 nucleotide-resolution Conv + pure-SSM model with MLM pretraining.
+"""Nucleotide-resolution Conv + Mamba site model with optional MLM pretraining.
 
-Same Conv stem / phase packing / fusion / refinement pipeline as V7S2, but the
-context stack is attention-free: every context layer is a bidirectional Mamba3
-mixer plus a SwiGLU FFN. No transformer layers anywhere.
+Dilated depthwise Conv stem -> phase packing -> bidirectional Mamba3 + SwiGLU
+context stack -> unpack/fuse -> Conv refinement -> four candidate heads
+(donor, acceptor, start, stop). Attention-free.
 """
 
 from dataclasses import asdict, dataclass
@@ -33,7 +33,7 @@ MODEL_VOCAB_SIZE = 6
 
 
 @dataclass
-class V8S2Config:
+class ConvMambaConfig:
     vocab_size: int = MODEL_VOCAB_SIZE
     dna_vocab_size: int = DNA_VOCAB_SIZE
     mask_token: int = MASK_TOKEN
@@ -43,8 +43,7 @@ class V8S2Config:
     conv_kernel: int = 15
     conv_dilations: tuple = (1, 2, 4, 8, 16, 32)
     refine_dilations: tuple = (1, 2)
-    # 5 SSM blocks roughly parameter-match V7S2's 4 hybrid blocks once the
-    # attention sublayer is removed.
+    # 5 bidirectional Mamba3 blocks in the context stack
     n_ssm_layers: int = 5
     d_state: int = 64
     headdim: int = 64
@@ -170,8 +169,8 @@ def resolve_mamba_factory(backend):
         from mamba_ssm import Mamba3
     except ImportError as exc:
         raise ImportError(
-            "V8S2 production training requires mamba_ssm.Mamba3. "
-            "Install experiments/v8s2/environment.yml. The 'reference' backend "
+            "convmamba training/scoring requires mamba_ssm.Mamba3 (see environment.yml). "
+            "The 'reference' backend "
             "is reserved for CPU smoke tests."
         ) from exc
     return Mamba3
@@ -256,12 +255,12 @@ class CandidateHead(nn.Module):
         return self.layers(x)
 
 
-class GeneFinderV8S2(nn.Module):
+class ConvMambaNet(nn.Module):
     SITE_NAMES = ("donor", "acceptor", "start", "stop")
 
     def __init__(self, config=None, mixer_factory=None):
         super().__init__()
-        self.config = config or V8S2Config()
+        self.config = config or ConvMambaConfig()
         cfg = self.config
         self.embedding = nn.Embedding(cfg.vocab_size, cfg.local_dim)
         self.embedding_dropout = nn.Dropout(cfg.dropout)
@@ -352,9 +351,9 @@ class GeneFinderV8S2(nn.Module):
         return sum(parameter.numel() for parameter in self.parameters() if parameter.requires_grad)
 
 
-def build_v8s2_from_checkpoint(checkpoint, device=None):
-    config = V8S2Config.from_dict(checkpoint["model_config"])
-    model = GeneFinderV8S2(config)
+def build_from_checkpoint(checkpoint, device=None):
+    config = ConvMambaConfig.from_dict(checkpoint["model_config"])
+    model = ConvMambaNet(config)
     model.load_state_dict(checkpoint["model_state"])
     if device is not None:
         model = model.to(device)

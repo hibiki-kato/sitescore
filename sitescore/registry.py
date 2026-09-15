@@ -1,5 +1,5 @@
 """Model lookup by name.  Built-in models are registered via the
-`siteval.models` entry-point group in pyproject.toml; third-party packages can
+`sitescore.models` entry-point group in pyproject.toml; third-party packages can
 add their own without touching this repo."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from importlib.metadata import entry_points
 from .interface import SiteModel
 
 # Fallback when the package is on PYTHONPATH but not pip-installed.
-BUILTIN = {"ssm": "siteval.models.ssm.adapter:SSMModel"}
+BUILTIN = {"convmamba": "sitescore.models.convmamba.adapter:ConvMambaSiteModel"}
 
 
 def _load(spec: str) -> type[SiteModel]:
@@ -19,7 +19,7 @@ def _load(spec: str) -> type[SiteModel]:
 
 def list_models() -> dict[str, type[SiteModel]]:
     models = {name: _load(spec) for name, spec in BUILTIN.items()}
-    models.update({ep.name: ep.load() for ep in entry_points(group="siteval.models")})
+    models.update({ep.name: ep.load() for ep in entry_points(group="sitescore.models")})
     return models
 
 

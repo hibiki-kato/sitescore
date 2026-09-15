@@ -1,10 +1,8 @@
-"""SSM evaluator: GeneFinderV8S2 (Conv stem + bidirectional Mamba3).
-
-Everything except this file is copied verbatim from the v8s5_hsap_with_chr1
-package (model, checkpoints, common, data, training, autobatch, mlm,
-profiles). That package is hard-wired to GRCh38 through `common.NC_TO_NAME`
-and `profiles.PROFILES`; `_install_profile` below rebinds both to the input
-genome so the unchanged data builder works on any FASTA.
+"""convmamba evaluator: ConvMambaNet (dilated Conv stem + bidirectional Mamba3
+context stack + four candidate heads). model/checkpoints/common/data/training
+are the model's own code; this file is the only glue to the SiteModel
+interface. `_install_profile` tells the data builder which sequences of the
+input FASTA are validation.
 """
 from __future__ import annotations
 
@@ -18,12 +16,12 @@ import numpy as np
 from ...interface import SITE_TYPES, SiteModel, SiteScore, read_fasta
 from . import common
 
-CHECKPOINT = "v8s2_best.pt"
-PROFILE = "siteval"
+CHECKPOINT = "model.pt"
+PROFILE = "sitescore"
 MOTIF_LEN = {"donor": 2, "acceptor": 2, "start": 3, "stop": 3}
 
-# Training defaults mirror scripts/train.py; any key can be overridden via
-# `siteval train --hparams '{...}'`.
+# Training defaults; any key can be overridden via
+# `sitescore train --hparams '{...}'`.
 DEFAULTS = dict(
     epochs=64, patience=8, batch_size=2, grad_accum=4, num_workers=4, amp="bf16",
     encoder_lr=3.0e-5, head_lr=1.0e-4, weight_decay=1.0e-4, warmup_steps=300,
@@ -53,11 +51,11 @@ def choose_val_chroms(lengths: dict[str, int], fraction: float) -> list[str]:
 
 
 def _install_profile(chroms: list[str], val_chroms: list[str]) -> None:
-    from . import profiles
+    from . import adapter_profile as profiles
     common.NC_TO_NAME = {c: c for c in chroms}          # data builder iterates this
     profiles.PROFILES[PROFILE] = profiles.DataProfile(
         name=PROFILE, test_chrom="", val_chroms=tuple(val_chroms),
-        expected_train=None, expected_val=None, test_status="siteval")
+        expected_train=None, expected_val=None, test_status="sitescore")
 
 
 def _resolve_alpha(hp, init, stats) -> dict[str, float]:
@@ -71,8 +69,8 @@ def _resolve_alpha(hp, init, stats) -> dict[str, float]:
     return {t: float(a.get(t, 0.0)) for t in SITE_TYPES}
 
 
-class SSMModel(SiteModel):
-    name = "ssm"
+class ConvMambaSiteModel(SiteModel):
+    name = "convmamba"
 
     def __init__(self, model, device, batch_size: int = 32, amp: str = "bf16"):
         self.model, self.device, self.batch_size, self.amp = model, device, batch_size, amp
@@ -80,12 +78,12 @@ class SSMModel(SiteModel):
     # ------------------------------------------------------------------ train
     @classmethod
     def train(cls, genome: Path, annotation: Path, out_dir: Path,
-              init_dir: Path | None = None, **hparams) -> "SSMModel":
+              init_dir: Path | None = None, **hparams) -> "ConvMambaSiteModel":
         import torch
         from torch.utils.data import DataLoader
         from .checkpoints import MODEL_KIND, load_finetune_checkpoint
         from .data import SupervisedWindowDataset, build_supervised_profile
-        from .model import GeneFinderV8S2, V8S2Config
+        from .model import ConvMambaNet, ConvMambaConfig
         from .training import train_model
 
         hp = {**DEFAULTS, **hparams}
@@ -104,9 +102,9 @@ class SSMModel(SiteModel):
                                          refseq_gff_path=hp["refseq_gff"])
 
         init = load_finetune_checkpoint(Path(init_dir) / CHECKPOINT, device) if init_dir else None
-        cfg = (V8S2Config.from_dict(init["model_config"]) if init
-               else V8S2Config(mamba_backend=hp["mamba_backend"]))
-        model = GeneFinderV8S2(cfg).to(device)
+        cfg = (ConvMambaConfig.from_dict(init["model_config"]) if init
+               else ConvMambaConfig(mamba_backend=hp["mamba_backend"]))
+        model = ConvMambaNet(cfg).to(device)
         if init:
             model.load_state_dict(init["model_state"])
         alpha = _resolve_alpha(hp, init, stats)
@@ -136,11 +134,11 @@ class SSMModel(SiteModel):
 
     # ------------------------------------------------------------------ load
     @classmethod
-    def load(cls, model_dir: Path, device: str | None = None) -> "SSMModel":
+    def load(cls, model_dir: Path, device: str | None = None) -> "ConvMambaSiteModel":
         import torch
         from .checkpoints import load_checkpoint
         model_dir = Path(model_dir)
-        cfg = json.loads((model_dir / "siteval.json").read_text())
+        cfg = json.loads((model_dir / "sitescore.json").read_text())
         hp = {**DEFAULTS, **cfg.get("hparams", {})}
         device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         model, _ = load_checkpoint(model_dir / cfg.get("checkpoint", CHECKPOINT), device)

@@ -3,7 +3,7 @@ import io
 import re
 from pathlib import Path
 
-from siteval.interface import SITE_TYPES, SiteModel, SiteScore, write_scores
+from sitescore.interface import SITE_TYPES, SiteModel, SiteScore, write_scores
 
 MOTIFS = {"donor": ("GT",), "acceptor": ("AG",), "start": ("ATG",), "stop": ("TAA", "TAG", "TGA")}
 
