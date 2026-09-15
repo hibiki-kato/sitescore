@@ -3,7 +3,7 @@ name = "siteval"
 version = "0.1.0"
 description = "Pluggable evaluator for splice (donor/acceptor) and start/stop sites; emits UniAnn score tables"
 requires-python = ">=3.10"
-dependencies = ["numpy"]
+dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]
 ssm = ["torch>=2.6", "matplotlib", "mamba-ssm>=2.3"]

@@ -18,11 +18,18 @@ pip install -e .
 ```bash
 siteval models                                                   # list plug-ins
 siteval train --model ssm --genome g.fna --annotation eviann.gff --out run/ssm [--init models/ssm-dmel-v1]
-siteval score --model-dir run/ssm --fasta chrX.fa [--strands +] > sites.tsv
+siteval calibrate --model-dir run/ssm --genome g.fna --annotation eviann.gff   # Platt fit (train does this by default)
+siteval score --model-dir run/ssm --fasta chrX.fa [--strands +] [--raw] > sites.tsv
 ```
 
 `sites.tsv` columns: `chrom pos strand type motif prob` (pos = 1-based + strand
 coordinate of the motif's first base; both strands by default). Pretrained weights: see `models/README.md`.
+
+## Calibration
+`siteval train` ends with a per-type Platt fit (`siteval/platt.py`, Bayes/Laplace
+targets) on the validation sequences against the EviAnn annotation, saved as
+`model_dir/calibration.json`; `siteval score` applies it unless `--raw`.
+`siteval calibrate` refits an existing `model_dir` on chosen sequences.
 
 ## Add a model
 1. Create `siteval/models/<name>/` and subclass `SiteModel`
