@@ -1,0 +1,6 @@
+# name: {model, url, sha256, trained_on}
+# ssm-dmel-v1:
+#   model: ssm
+#   url: https://github.com/hibiki-kato/siteval/releases/download/ssm-dmel-v1/ssm-dmel-v1.tar.gz
+#   sha256: ...
+#   trained_on: D. melanogaster, EviAnn pseudo_label.gff

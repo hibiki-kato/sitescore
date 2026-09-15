@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+# weights are never committed; see models/README.md
+models/*
+!models/README.md
+!models/registry.yaml
