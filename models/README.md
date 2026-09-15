@@ -1,14 +1,18 @@
-# Model weights
+# Pretrained weights
 
-Weights are **not** committed. Each pretrained model is a `model_dir`
-(`siteval.json` + checkpoint files) published as an archive and listed in
-`registry.yaml` with its URL and sha256:
+Weights are not committed. Each pretrained `model_dir` (`sitescore.json` + checkpoint)
+is a GitHub Release asset listed in `registry.yaml` with its URL and sha256.
 
 ```bash
-siteval-fetch ssm-hsap-v8s5-with_chr1 models/      # TODO: helper; until then download + verify by hand
-siteval score --model-dir models/ssm-hsap-v8s5-with_chr1 --fasta chrX.fa > sites.tsv
-siteval train --model ssm --init models/ssm-hsap-v8s5-with_chr1 ...   # fine-tune for a new genome
+sitescore fetch convmamba-human-grch38            # -> models/convmamba-human-grch38/ (verified)
+sitescore score --model-dir models/convmamba-human-grch38 --fasta chrX.fa > sites.tsv
+sitescore train --model convmamba --init models/convmamba-human-grch38 \
+    --genome g.fna --annotation eviann.gff --out run/convmamba   # fine-tune on a new genome
 ```
 
-Storage: GitHub Releases of this repo (one asset per model version). Move to
-Hugging Face Hub if archives exceed the 2 GB asset limit.
+| name | model | trained on | size |
+| --- | --- | --- | --- |
+| `convmamba-human-grch38` | convmamba | human GRCh38.p14, EviAnn labels, all chromosomes | 104 MB |
+
+Adding a model: `tar czf <name>.tar.gz <name>/` (the directory must contain
+`sitescore.json`), attach it to a release, add the entry with `sha256sum` here.

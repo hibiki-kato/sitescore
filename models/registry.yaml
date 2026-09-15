@@ -1,6 +1,9 @@
-# name: {model, url, sha256, trained_on}
-# ssm-dmel-v1:
-#   model: convmamba
-#   url: https://github.com/hibiki-kato/siteval/releases/download/ssm-dmel-v1/ssm-hsap-v8s5-with_chr1.tar.gz
-#   sha256: ...
-#   trained_on: human GRCh38.p14, EviAnn labels, all chromosomes
+# Pretrained model_dirs published as GitHub Release assets. `sitescore fetch <name>` downloads
+# and verifies one into models/<name>/.
+convmamba-human-grch38:
+  model: convmamba
+  url: https://github.com/hibiki-kato/sitescore/releases/download/convmamba-human-grch38-v1/convmamba-human-grch38.tar.gz
+  sha256: 0db2ac0540cebb4cec5cde34f3067cc3172e3af7abbde3f7f15af3a3aafeeea9
+  size_mb: 104
+  trained_on: human GRCh38.p14 (all chromosomes incl. chr1), EviAnn labels; validation chr5/9/10/22
+  author: Chirag Adwani (https://github.com/divide-by-zer0)

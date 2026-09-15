@@ -1,4 +1,6 @@
-"""sitescore train | calibrate | score | models
+"""sitescore fetch | train | calibrate | score | models
+
+  sitescore fetch     convmamba-human-grch38 [--dest models]      # pretrained weights (models/registry.yaml)
 
   sitescore train     --model convmamba --genome g.fna --annotation eviann.gff --out model_dir [--init base_model_dir]
   sitescore calibrate --model-dir model_dir --genome g.fna --annotation eviann.gff [--chroms a,b]
@@ -63,6 +65,11 @@ def cmd_score(a):
     write_scores(calibration.apply(scores, ab) if ab else scores, sys.stdout)
 
 
+def cmd_fetch(a):
+    from .fetch import fetch
+    fetch(a.name, Path(a.dest))
+
+
 def cmd_models(a):
     for name, cls in sorted(list_models().items()):
         print(f"{name}\t{cls.__module__}.{cls.__name__}")
@@ -93,6 +100,10 @@ def main(argv=None):
     s.add_argument("--fasta", required=True)
     s.add_argument("--strands", default="+-", help='"+", "-" or "+-" (default)')
     s.add_argument("--raw", action="store_true", help="emit raw probabilities even if calibration.json exists")
+
+    f = sp.add_parser("fetch"); f.set_defaults(fn=cmd_fetch)
+    f.add_argument("name", help="entry in models/registry.yaml")
+    f.add_argument("--dest", default=str(Path(__file__).resolve().parent.parent / "models"))
 
     m = sp.add_parser("models"); m.set_defaults(fn=cmd_models)
 

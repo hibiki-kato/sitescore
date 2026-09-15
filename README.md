@@ -11,8 +11,11 @@ genome.fna + eviann.gff ──train──> model_dir ──score(seq.fa)──> 
 
 ## Install
 ```bash
-pip install -e .
+pip install -e ".[convmamba]"     # torch + mamba-ssm (CUDA GPU); see environment.yml for a conda env
+sitescore fetch convmamba-human-grch38          # pretrained weights (GitHub Release, sha256-verified)
 ```
+`mamba-ssm` builds CUDA kernels at install time; a CPU-only machine can still run
+the tests and smoke trainings with `{"mamba_backend": "reference"}`.
 
 ## Use
 ```bash
@@ -23,7 +26,12 @@ sitescore score --model-dir run/convmamba --fasta chrX.fa [--strands +] [--raw] 
 ```
 
 `sites.tsv` columns: `chrom pos strand type motif prob` (pos = 1-based + strand
-coordinate of the motif's first base; both strands by default). Pretrained weights: see `models/README.md`.
+coordinate of the motif's first base; both strands by default). Pretrained weights: `models/README.md`.
+
+Training holds out the smallest sequences until `val_fraction` (15%) of the genome
+is covered (or the explicit `val_chroms` list) for early stopping (validation loss),
+checkpoint selection and the Platt fit; the rest is trained on. `model_dir/metrics.jsonl`
+and `model_dir/plots/` record train/validation loss and per-type F1 / PR-AUC per epoch.
 
 ## Calibration
 `sitescore train` ends with a per-type Platt fit (`sitescore/platt.py`, Bayes/Laplace
@@ -49,6 +57,15 @@ smallest sequences up to `val_fraction`, or `val_chroms`), fine-tunes from
 the requested strands. Hyper-parameters: `DEFAULTS` in
 `sitescore/models/convmamba/adapter.py`, overridable with `--hparams`. Needs a CUDA GPU
 with `mamba-ssm`; `{"mamba_backend": "reference"}` runs on CPU for smoke tests.
+
+## Results
+Site-level precision-recall of the convmamba scores against RefSeq (all candidate
+motifs, both strands), after fine-tuning from `convmamba-human-grch38` on EviAnn labels:
+
+| genome | donor AP | acceptor AP | start AP | stop AP |
+| --- | --- | --- | --- | --- |
+| D. melanogaster, 7 main sequences | 0.970 | 0.964 | 0.847 | 0.859 |
+| D. melanogaster, held-out 2L only | 0.968 | 0.962 | 0.827 | 0.855 |
 
 ## Roadmap
 - ChimAnn runs `sitescore` as a separate Nextflow stage.
