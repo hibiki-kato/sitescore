@@ -30,6 +30,16 @@ prob in (0,1]). Pretrained weights: see `models/README.md`.
 2. Register it in `pyproject.toml` under `[project.entry-points."siteval.models"]`.
 3. `pytest` — `tests/test_interface.py` is the contract every model must meet.
 
+## Models
+| plug-in | code | pretrained (`models/`, not in git) |
+| --- | --- | --- |
+| `ssm` | `siteval/models/ssm/` — GeneFinderV8S2, Conv + bidirectional Mamba3 (from the v8s5_hsap experiment) | `ssm-hsap-v8s5-with_chr1/` (114 MB, GRCh38 fine-tuned) |
+
+`ssm` status: `score` works from the delivered code (needs GPU + mamba-ssm; verify
+against the original `score_chrX.py` incl. Platt calibration); `train` is
+blocked until `data.py`, `training.py`, `autobatch.py`, `make_train_data.py`,
+`train.py` arrive.
+
 ## Roadmap
 - ChimAnn runs `siteval` as a separate Nextflow stage.
 - Final product: folded into UniAnn (evaluator + PSAURON + Viterbi/k-Viterbi)

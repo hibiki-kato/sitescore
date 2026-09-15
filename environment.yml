@@ -1,9 +1,11 @@
-# Process environment for ChimAnn's SITEVAL_* stages. Add the model's deps
-# (torch, mamba-ssm, ...) here when the SSM code lands.
+# Process environment for ChimAnn's SITEVAL_* stages (GPU host).
 name: siteval
-channels: [conda-forge]
+channels: [conda-forge, pytorch, nvidia]
 dependencies:
   - python=3.10
+  - pytorch>=2.6
+  - pytorch-cuda=12.4
   - pip
   - pip:
+      - mamba-ssm>=2.3   # provides Mamba3; needs CUDA at build time
       - -e .
