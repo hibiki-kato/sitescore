@@ -66,17 +66,21 @@ def fit_platt(z, y):
     targets, n_pos, n_neg, t_pos, t_neg = laplace_targets(y)
     if n_pos == 0 or n_neg == 0:
         # Degenerate head (all one class); identity map is the safe fallback.
-        return 1.0, 0.0, {
-            "n_pos": n_pos,
-            "n_neg": n_neg,
-            "t_pos": t_pos,
-            "t_neg": t_neg,
-            "base_rate": n_pos / max(n_pos + n_neg, 1),
-            "converged": False,
-            "degenerate": True,
-            "loss": float("nan"),
-            "n_iter": 0,
-        }
+        return (
+            1.0,
+            0.0,
+            {
+                "n_pos": n_pos,
+                "n_neg": n_neg,
+                "t_pos": t_pos,
+                "t_neg": t_neg,
+                "base_rate": n_pos / max(n_pos + n_neg, 1),
+                "converged": False,
+                "degenerate": True,
+                "loss": float("nan"),
+                "n_iter": 0,
+            },
+        )
 
     def objective(params):
         a, b = params
@@ -84,9 +88,7 @@ def fit_platt(z, y):
         prob = sigmoid(f)
         # Cross-entropy to soft targets via stable softplus:
         #   CE = t * softplus(-f) + (1 - t) * softplus(f)
-        loss = np.mean(
-            targets * np.logaddexp(0.0, -f) + (1.0 - targets) * np.logaddexp(0.0, f)
-        )
+        loss = np.mean(targets * np.logaddexp(0.0, -f) + (1.0 - targets) * np.logaddexp(0.0, f))
         residual = prob - targets
         grad = np.array([np.mean(residual * z), np.mean(residual)])
         return loss, grad

@@ -1,6 +1,7 @@
 """Model lookup by name.  Built-in models are registered via the
 `sitescore.models` entry-point group in pyproject.toml; third-party packages can
 add their own without touching this repo."""
+
 from __future__ import annotations
 
 from importlib import import_module

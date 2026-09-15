@@ -4,7 +4,7 @@ from sitescore.models.convmamba.adapter import _resolve_alpha, choose_val_chroms
 def test_choose_val_holds_out_smallest_until_fraction():
     lengths = {"a": 100, "b": 10, "c": 20, "d": 70}
     assert choose_val_chroms(lengths, 0.15) == ["b", "c"]
-    assert choose_val_chroms({"a": 5, "b": 5}, 0.9) == ["a"]     # never empties train
+    assert choose_val_chroms({"a": 5, "b": 5}, 0.9) == ["a"]  # never empties train
 
 
 def test_resolve_alpha_precedence():

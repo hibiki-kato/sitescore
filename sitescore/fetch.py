@@ -1,4 +1,5 @@
 """Download a pretrained model_dir listed in models/registry.yaml and verify its sha256."""
+
 from __future__ import annotations
 
 import hashlib
@@ -18,9 +19,11 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict[str, str]]:
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if not line.startswith(" "):
-            cur = line.rstrip(":").strip(); entries[cur] = {}
+            cur = line.rstrip(":").strip()
+            entries[cur] = {}
         elif cur:
-            k, _, v = line.strip().partition(":"); entries[cur][k.strip()] = v.strip()
+            k, _, v = line.strip().partition(":")
+            entries[cur][k.strip()] = v.strip()
     return entries
 
 
@@ -30,14 +33,16 @@ def fetch(name: str, dest: Path) -> Path:
         raise SystemExit(f"unknown model '{name}'; registry has {sorted(read_registry())}")
     target = dest / name
     if (target / "sitescore.json").exists():
-        print(f"{target} already present", file=sys.stderr); return target
+        print(f"{target} already present", file=sys.stderr)
+        return target
     dest.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         print(f"downloading {entry['url']}", file=sys.stderr)
         with urllib.request.urlopen(entry["url"]) as r:
             h = hashlib.sha256()
             while chunk := r.read(1 << 20):
-                tmp.write(chunk); h.update(chunk)
+                tmp.write(chunk)
+                h.update(chunk)
     if h.hexdigest() != entry["sha256"]:
         Path(tmp.name).unlink()
         raise SystemExit(f"sha256 mismatch for {name}: {h.hexdigest()} != {entry['sha256']}")

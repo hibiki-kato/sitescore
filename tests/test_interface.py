@@ -1,4 +1,5 @@
 """Contract test: any SiteModel must survive this with a toy sequence."""
+
 import io
 import re
 from pathlib import Path
@@ -10,6 +11,7 @@ MOTIFS = {"donor": ("GT",), "acceptor": ("AG",), "start": ("ATG",), "stop": ("TA
 
 class DummyModel(SiteModel):
     """Scores every candidate motif 0.5; the shape reference for real models."""
+
     name = "dummy"
 
     @classmethod
