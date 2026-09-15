@@ -23,7 +23,10 @@ MOTIF_LEN = {"donor": 2, "acceptor": 2, "start": 3, "stop": 3}
 # Training defaults; any key can be overridden via
 # `sitescore train --hparams '{...}'`.
 DEFAULTS = dict(
-    epochs=64, patience=8, batch_size=2, grad_accum=4, num_workers=4, amp="bf16",
+    epochs=64, patience=8, batch_size=2, grad_accum=8, num_workers=4, amp="bf16",
+    auto_batch=True,             # probe the largest batch that fits the GPU (autobatch.py);
+    auto_batch_max=64,           #   grad_accum is rescaled so batch_size*grad_accum is kept
+    auto_batch_target_mem=0.85,  #   fraction of free VRAM to target
     encoder_lr=3.0e-5, head_lr=1.0e-4, weight_decay=1.0e-4, warmup_steps=300,
     max_grad_norm=1.0, selection_metric="val_loss", soft_weight=1.0, seed=42,
     mamba_backend="mamba3",      # "reference" = CPU smoke tests only
@@ -109,25 +112,33 @@ class ConvMambaSiteModel(SiteModel):
             model.load_state_dict(init["model_state"])
         alpha = _resolve_alpha(hp, init, stats)
 
+        train_set, val_set = SupervisedWindowDataset(data_dir, "train"), SupervisedWindowDataset(data_dir, "val")
+        batch, accum = hp["batch_size"], hp["grad_accum"]
+        if hp["auto_batch"] and device.type == "cuda":
+            from .autobatch import autotune_finetune_batch_size, scaled_grad_accum
+            batch = autotune_finetune_batch_size(model, train_set, device, hp["amp"], initial_batch=batch,
+                                                 max_batch=hp["auto_batch_max"],
+                                                 target_fraction=hp["auto_batch_target_mem"])
+            accum = scaled_grad_accum(hp["batch_size"] * hp["grad_accum"], batch, accum)
+            print(f"auto_batch: batch_size={batch} grad_accum={accum} (effective {batch * accum})", flush=True)
         kw = dict(num_workers=hp["num_workers"], pin_memory=device.type == "cuda")
-        train_loader = DataLoader(SupervisedWindowDataset(data_dir, "train"),
-                                  batch_size=hp["batch_size"], shuffle=True, **kw)
-        val_loader = DataLoader(SupervisedWindowDataset(data_dir, "val"),
-                                batch_size=hp["batch_size"], shuffle=False, **kw)
-        run_args = {**hp, "init_dir": str(init_dir) if init_dir else None,
-                    "val_chroms": val, "alpha_resolved": alpha}
+        train_loader = DataLoader(train_set, batch_size=batch, shuffle=True, **kw)
+        val_loader = DataLoader(val_set, batch_size=batch, shuffle=False, **kw)
+        run_args = {**hp, "init_dir": str(init_dir) if init_dir else None, "val_chroms": val,
+                    "alpha_resolved": alpha, "batch_size_used": batch, "grad_accum_used": accum}
         train_model(model=model, model_kind=MODEL_KIND, run_kind="pretrained" if init else "scratch",
                     train_loader=train_loader, val_loader=val_loader, device=device,
                     out_dir=out_dir, checkpoint_name=CHECKPOINT, profile_name=PROFILE,
                     profile_stats=stats, model_config=cfg.to_dict(),
                     epochs=hp["epochs"], encoder_lr=hp["encoder_lr"], head_lr=hp["head_lr"],
-                    weight_decay=hp["weight_decay"], grad_accum=hp["grad_accum"],
+                    weight_decay=hp["weight_decay"], grad_accum=accum,
                     warmup_steps=hp["warmup_steps"], max_grad_norm=hp["max_grad_norm"],
                     patience=hp["patience"], amp=hp["amp"], run_args=run_args,
                     alpha=alpha, soft_weight=hp["soft_weight"])
         (out_dir / "train_info.json").write_text(json.dumps(
             {"checkpoint": CHECKPOINT, "val_chroms": val, "alpha": alpha,
-             "init_dir": run_args["init_dir"], "hparams": hp}, indent=2, default=str))
+             "init_dir": run_args["init_dir"], "batch_size_used": batch, "grad_accum_used": accum,
+             "hparams": hp}, indent=2, default=str))
         if not hp["keep_data"]:
             shutil.rmtree(data_dir, ignore_errors=True)
         return cls.load(out_dir)

@@ -55,7 +55,11 @@ smallest sequences up to `val_fraction`, or `val_chroms`), fine-tunes from
 `--init` (or trains from scratch), and writes `model.pt` + `train_info.json`;
 `score` tiles 10 kb windows (stride 5 kb) and emits every candidate motif on
 the requested strands. Hyper-parameters: `DEFAULTS` in
-`sitescore/models/convmamba/adapter.py`, overridable with `--hparams`. Needs a CUDA GPU
+`sitescore/models/convmamba/adapter.py`, overridable with `--hparams`. By default
+the batch size is probed against free VRAM (`auto_batch`, up to `auto_batch_max`)
+and `grad_accum` rescaled so the effective batch stays `batch_size * grad_accum`;
+early stopping is on validation loss with `patience` epochs (fine-tuning from a
+pretrained model usually peaks at epoch 1, so `patience` 2-3 is enough). Needs a CUDA GPU
 with `mamba-ssm`; `{"mamba_backend": "reference"}` runs on CPU for smoke tests.
 
 ## Results
