@@ -14,6 +14,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
 SITE_TYPES = ("donor", "acceptor", "start", "stop")
 SCORE_COLUMNS = ("chrom", "pos", "strand", "type", "motif", "prob")
 
@@ -31,6 +33,25 @@ class SiteScore:
         return (
             f"{self.chrom}\t{self.pos}\t{self.strand}\t{self.type}\t{self.motif}\t{self.prob:.6g}"
         )
+
+
+@dataclass
+class SiteBlock:
+    """Many candidates of one (chrom, strand, type) at once; same content as a
+    list of SiteScore, but arrays. Models may yield these from `score_blocks`
+    for speed; the pipeline treats both forms identically."""
+
+    chrom: str
+    strand: str
+    type: str
+    pos: np.ndarray  # int64, 1-based + strand coordinates
+    motif: np.ndarray  # dtype S2/S3 (bytes) or str
+    prob: np.ndarray  # float32/64 in (0, 1]
+
+    def rows(self) -> Iterator[SiteScore]:
+        for p, m, q in zip(self.pos.tolist(), self.motif.tolist(), self.prob.tolist(), strict=True):
+            m = m.decode() if isinstance(m, bytes) else m
+            yield SiteScore(self.chrom, int(p), self.strand, self.type, m, float(q))
 
 
 class SiteModel(ABC):
@@ -59,6 +80,21 @@ class SiteModel(ABC):
     def score(self, chrom: str, seq: str, strands: Iterable[str] = ("+",)) -> Iterator[SiteScore]:
         """Yield one SiteScore per candidate motif on the requested strands."""
 
+    def score_blocks(
+        self, chrom: str, seq: str, strands: Iterable[str] = ("+",)
+    ) -> Iterator[SiteBlock]:
+        """Optional fast path: the same candidates as `score`, as SiteBlock arrays.
+        Default wraps `score`; override it to avoid per-row Python objects."""
+        for s in self.score(chrom, seq, strands):
+            yield SiteBlock(
+                s.chrom,
+                s.strand,
+                s.type,
+                np.array([s.pos]),
+                np.array([s.motif]),
+                np.array([s.prob]),
+            )
+
 
 def read_fasta(path: Path) -> Iterator[tuple[str, str]]:
     """Yield (id, upper-case sequence) per record; no third-party dependency."""
@@ -75,11 +111,26 @@ def read_fasta(path: Path) -> Iterator[tuple[str, str]]:
         yield cid, "".join(chunks).upper()
 
 
-def write_scores(scores: Iterable[SiteScore], out) -> int:
-    """Write the header + rows to a text handle; returns row count."""
+def write_scores(scores: Iterable, out) -> int:
+    """Write the header + rows for SiteScore and/or SiteBlock items; returns row count."""
     out.write("\t".join(SCORE_COLUMNS) + "\n")
     n = 0
     for s in scores:
-        out.write(s.row() + "\n")
-        n += 1
+        if isinstance(s, SiteBlock):
+            if s.pos.size == 0:
+                continue
+            motif = s.motif.astype("U") if s.motif.dtype.kind == "S" else s.motif.astype("U")
+            head = f"{s.chrom}\t"
+            mid = f"\t{s.strand}\t{s.type}\t"
+            lines = np.char.add(
+                np.char.add(np.char.add(head, s.pos.astype("U")), mid),
+                np.char.add(
+                    np.char.add(motif, "\t"), np.char.mod("%.6g", s.prob.astype(np.float64))
+                ),
+            )
+            out.write("\n".join(lines.tolist()) + "\n")
+            n += int(s.pos.size)
+        else:
+            out.write(s.row() + "\n")
+            n += 1
     return n

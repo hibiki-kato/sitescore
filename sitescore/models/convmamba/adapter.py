@@ -13,7 +13,7 @@ from typing import Iterable, Iterator
 
 import numpy as np
 
-from ...interface import SITE_TYPES, SiteModel, SiteScore, read_fasta
+from ...interface import SITE_TYPES, SiteBlock, SiteModel, SiteScore, read_fasta
 from . import common
 
 CHECKPOINT = "model.pt"
@@ -177,16 +177,21 @@ class ConvMambaSiteModel(SiteModel):
                     out[w["win_start"] + lo:w["win_start"] + hi] = probs[j, lo:hi]
         return out
 
-    def score(self, chrom: str, seq: str, strands: Iterable[str] = ("+",)) -> Iterator[SiteScore]:
+    def score_blocks(self, chrom: str, seq: str, strands: Iterable[str] = ("+",)) -> Iterator[SiteBlock]:
         L = len(seq)
         for strand in strands:
             s = seq if strand == "+" else common.reverse_complement(seq)
             enc = common.encode_sequence(s)
             probs = self._site_probs(enc)
             cands = common.find_candidates(enc)
+            raw = np.frombuffer(s.encode("ascii"), dtype=np.uint8)
             for k, kind in enumerate(SITE_TYPES):
+                p = np.asarray(cands[kind], dtype=np.int64)
                 n = MOTIF_LEN[kind]
-                for p in cands[kind]:
-                    p = int(p)
-                    yield SiteScore(chrom, common.frame_to_genomic_1based(strand, p, L),
-                                    strand, kind, s[p:p + n], float(probs[p, k]))
+                pos = p + 1 if strand == "+" else L - p  # frame_to_genomic_1based, vectorized
+                motif = raw[p[:, None] + np.arange(n)].view(f"S{n}").ravel()
+                yield SiteBlock(chrom, strand, kind, pos, motif, probs[p, k])
+
+    def score(self, chrom: str, seq: str, strands: Iterable[str] = ("+",)) -> Iterator[SiteScore]:
+        for block in self.score_blocks(chrom, seq, strands):
+            yield from block.rows()

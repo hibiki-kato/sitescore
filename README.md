@@ -44,7 +44,10 @@ targets) on the validation sequences against the EviAnn annotation, saved as
 
 ## Add a model
 1. Create `sitescore/models/<name>/` and subclass `SiteModel`
-   (`sitescore/interface.py`): implement `train`, `load`, `score`.
+   (`sitescore/interface.py`): implement `train`, `load`, `score` (one `SiteScore`
+   per candidate). Optionally override `score_blocks` to yield `SiteBlock` arrays
+   per (strand, type) instead; the CLI uses it when present and it avoids
+   per-row Python objects (convmamba: 3x faster output).
 2. Register it in `pyproject.toml` under `[project.entry-points."sitescore.models"]`.
 3. `pytest` — `tests/test_interface.py` is the contract every model must meet.
 

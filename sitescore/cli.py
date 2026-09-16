@@ -74,7 +74,7 @@ def cmd_score(a):
     md = Path(a.model_dir)
     model = _load_model(md)
     strands = tuple(c for c in a.strands if c in "+-") or ("+",)
-    scores = (s for cid, seq in read_fasta(a.fasta) for s in model.score(cid, seq, strands))
+    scores = (b for cid, seq in read_fasta(a.fasta) for b in model.score_blocks(cid, seq, strands))
     ab = None if a.raw else calibration.load(md)
     write_scores(calibration.apply(scores, ab) if ab else scores, sys.stdout)
 
