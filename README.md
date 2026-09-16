@@ -64,8 +64,10 @@ the requested strands. Hyper-parameters: `DEFAULTS` in
 `sitescore/models/convmamba/adapter.py`, overridable with `--hparams`. By default
 the batch size is probed against free VRAM (`auto_batch`, up to `auto_batch_max`)
 and `grad_accum` rescaled so the effective batch stays `batch_size * grad_accum`;
-early stopping is on validation loss with `patience` epochs (fine-tuning from a
-pretrained model usually peaks at epoch 1, so `patience` 2-3 is enough). Needs a CUDA GPU
+validation runs `evals_per_epoch` times per epoch (default 4; fractional epochs in
+`metrics.jsonl`) and early stopping is on validation loss after `patience`
+evaluations without improvement (fine-tuning from a pretrained model usually peaks
+within the first epoch or two, so this stops long before the epoch cap). Needs a CUDA GPU
 with `mamba-ssm`; `{"mamba_backend": "reference"}` runs on CPU for smoke tests.
 
 ## Results

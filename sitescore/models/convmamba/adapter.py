@@ -23,7 +23,10 @@ MOTIF_LEN = {"donor": 2, "acceptor": 2, "start": 3, "stop": 3}
 # Training defaults; any key can be overridden via
 # `sitescore train --hparams '{...}'`.
 DEFAULTS = dict(
-    epochs=64, patience=8, batch_size=2, grad_accum=8, num_workers=4, amp="bf16",
+    epochs=64,
+    patience=8,              # evaluations (not epochs) without improvement before stopping
+    evals_per_epoch=4,       # validate every 1/4 epoch; fine-tuning peaks early, so stop early
+    batch_size=2, grad_accum=8, num_workers=4, amp="bf16",
     auto_batch=True,             # probe the largest batch that fits the GPU (autobatch.py);
     auto_batch_max=64,           #   grad_accum is rescaled so batch_size*grad_accum is kept
     auto_batch_target_mem=0.85,  #   fraction of free VRAM to target
@@ -134,7 +137,7 @@ class ConvMambaSiteModel(SiteModel):
                     weight_decay=hp["weight_decay"], grad_accum=accum,
                     warmup_steps=hp["warmup_steps"], max_grad_norm=hp["max_grad_norm"],
                     patience=hp["patience"], amp=hp["amp"], run_args=run_args,
-                    alpha=alpha, soft_weight=hp["soft_weight"])
+                    alpha=alpha, soft_weight=hp["soft_weight"], evals_per_epoch=hp["evals_per_epoch"])
         (out_dir / "train_info.json").write_text(json.dumps(
             {"checkpoint": CHECKPOINT, "val_chroms": val, "alpha": alpha,
              "init_dir": run_args["init_dir"], "batch_size_used": batch, "grad_accum_used": accum,

@@ -629,6 +629,7 @@ def train_model(
     resume_checkpoint=None,
     alpha=None,
     soft_weight=1.0,
+    evals_per_epoch=1,
 ):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -766,6 +767,8 @@ def train_model(
             t0 = time.time()
             nan_losses = {name: float("nan") for name in ("donor", "acceptor", "start", "stop", "total", "floor", "excess")}
             record_epoch(0, nan_losses, time.time() - t0)
+        eval_every = math.ceil(len(train_loader) / max(1, int(evals_per_epoch)))
+        stop = False
         for epoch in range(start_epoch, epochs + 1):
             model.train()
             start_time = time.time()
@@ -837,6 +840,18 @@ def train_model(
                         loss.item()
                     )
                 batches += 1
+                if evals_per_epoch > 1 and batch_index % eval_every == 0 and batch_index < len(train_loader):
+                    # mid-epoch validation: same bookkeeping as an epoch end, fractional epoch number
+                    frac = round(epoch - 1 + batch_index / len(train_loader), 3)
+                    running = {name: value / max(batches, 1) for name, value in loss_sums.items()}
+                    improved = record_epoch(frac, running, time.time() - start_time)
+                    model.train()
+                    if not improved:
+                        no_improvement += 1
+                        if patience and no_improvement >= patience:
+                            print(f"early stopping after {patience} evaluations without improvement")
+                            stop = True
+                            break
                 if batch_index == 1 or batch_index % log_every == 0 or batch_index == len(train_loader):
                     elapsed = time.time() - start_time
                     print(
@@ -847,6 +862,8 @@ def train_model(
                         f"{batch_index * train_loader.batch_size / max(elapsed, 1e-9):.1f} samples/s",
                         flush=True,
                     )
+            if stop:
+                break
             if accumulated:
                 torch.nn.utils.clip_grad_norm_(
                     model.parameters(), max_grad_norm
@@ -863,7 +880,7 @@ def train_model(
             if not improved:
                 no_improvement += 1
                 if patience and no_improvement >= patience:
-                    print(f"early stopping after {patience} epochs without improvement")
+                    print(f"early stopping after {patience} evaluations without improvement")
                     break
     return best_score, history
 
@@ -872,6 +889,8 @@ def train_model(
             for row in history:
                 metrics_file.write(json.dumps(row) + "\n")
             metrics_file.flush()
+        eval_every = math.ceil(len(train_loader) / max(1, int(evals_per_epoch)))
+        stop = False
         for epoch in range(start_epoch, epochs + 1):
             model.train()
             start_time = time.time()
@@ -943,6 +962,18 @@ def train_model(
                         loss.item()
                     )
                 batches += 1
+                if evals_per_epoch > 1 and batch_index % eval_every == 0 and batch_index < len(train_loader):
+                    # mid-epoch validation: same bookkeeping as an epoch end, fractional epoch number
+                    frac = round(epoch - 1 + batch_index / len(train_loader), 3)
+                    running = {name: value / max(batches, 1) for name, value in loss_sums.items()}
+                    improved = record_epoch(frac, running, time.time() - start_time)
+                    model.train()
+                    if not improved:
+                        no_improvement += 1
+                        if patience and no_improvement >= patience:
+                            print(f"early stopping after {patience} evaluations without improvement")
+                            stop = True
+                            break
                 if batch_index == 1 or batch_index % log_every == 0 or batch_index == len(train_loader):
                     elapsed = time.time() - start_time
                     print(
