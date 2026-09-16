@@ -700,6 +700,173 @@ def train_model(
             )
             return best_score, history
 
+
+    def record_epoch(epoch, train_losses, elapsed):
+        """Validate, append to history/metrics.jsonl, refresh plots, checkpoint if best.
+        Returns True when the selection metric improved. Epoch 0 = the initial
+        weights before any update (a candidate for best like any other epoch)."""
+        nonlocal best_score, no_improvement
+        validation = evaluate(
+            model, val_loader, device, model_kind=model_kind, amp=amp, alpha=alpha, soft_weight=soft_weight
+        )
+        row = flatten_metrics(
+            epoch, train_losses, validation, elapsed, [group["lr"] for group in optimizer.param_groups]
+        )
+        history.append(row)
+        metrics_file.write(json.dumps(row) + "\n")
+        metrics_file.flush()
+        save_training_curves(history, out_dir / "plots")
+        print_epoch_summary(row)
+        score = selection_value(validation, selection_metric)
+        if score <= best_score:
+            return False
+        best_score = score
+        no_improvement = 0
+        checkpoint_data = {
+            "format_version": FORMAT_VERSION,
+            "checkpoint_type": "fine_tune",
+            "model_kind": MODEL_KIND,
+            "run_kind": run_kind,
+            "epoch": epoch,
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "model_config": model_config,
+            "data_profile": profile_name,
+            "profile_stats": profile_stats,
+            "parameter_count": model.count_parameters(),
+            "selection_metric": selection_metric,
+            "label_strategy": "asymmetric_smoothing",
+            "alpha": dict(alpha),
+            "soft_weight": float(soft_weight),
+            "best_selection_score": best_score,
+            "best_val_total_loss": float(validation["losses"]["total"]),
+            "best_mean_coarse_f1": float(validation["selection_score"]),
+            "optimizer_step": optimizer_step,
+            "best_thresholds": {name: validation["sites"][name]["coarse_threshold"] for name in SITE_NAMES},
+            "validation": validation,
+            "history": history,
+            "run_args": run_args,
+        }
+        torch.save(checkpoint_data, out_dir / checkpoint_name)
+        print(
+            f"saved {checkpoint_name}: {selection_metric}="
+            f"{validation['losses']['total'] if selection_metric == 'val_loss' else validation['selection_score']:.5f} "
+            f"(val loss {validation['losses']['total']:.5f}, mean coarse F1 {validation['selection_score']:.4f})",
+            flush=True,
+        )
+        return True
+
+    with open(metrics_path, metrics_mode) as metrics_file:
+        if write_resume_history:
+            for row in history:
+                metrics_file.write(json.dumps(row) + "\n")
+            metrics_file.flush()
+        if start_epoch == 1:
+            # epoch 0: the starting weights (pretrained init or random) on the validation split
+            t0 = time.time()
+            nan_losses = {name: float("nan") for name in ("donor", "acceptor", "start", "stop", "total", "floor", "excess")}
+            record_epoch(0, nan_losses, time.time() - t0)
+        for epoch in range(start_epoch, epochs + 1):
+            model.train()
+            start_time = time.time()
+            loss_sums = {}
+            batches = accumulated = 0
+            optimizer.zero_grad(set_to_none=True)
+            print(
+                f"FT epoch {epoch}: {len(train_loader):,} batches; "
+                f"logging every {log_every} batches",
+                flush=True,
+            )
+            for batch_index, (
+                sequence,
+                splice_labels,
+                start_stop_labels,
+                trusted,
+            ) in enumerate(train_loader, start=1):
+                sequence = sequence.to(device, non_blocking=True)
+                splice_labels = splice_labels.to(device, non_blocking=True)
+                start_stop_labels = start_stop_labels.to(
+                    device, non_blocking=True
+                )
+                trusted = trusted.to(device, non_blocking=True)
+                factor = factor_at(optimizer_step)
+                for base_lr, group in zip(base_lrs, optimizer.param_groups):
+                    group["lr"] = base_lr * factor
+                with autocast_context(device, amp):
+                    outputs = model(sequence)
+                    losses = (
+                        smoothed_candidate_loss(
+                            outputs,
+                            sequence,
+                            splice_labels,
+                            start_stop_labels,
+                            trusted,
+                            alpha,
+                            soft_weight,
+                        )
+                        if True
+                        else v6_candidate_loss(
+                            outputs,
+                            sequence,
+                            splice_labels,
+                            start_stop_labels,
+                        )
+                    )
+                scaled = losses["total"] / grad_accum
+                if not torch.isfinite(scaled):
+                    optimizer.zero_grad(set_to_none=True)
+                    accumulated = 0
+                    print(
+                        f"WARN: skipped non-finite loss at epoch {epoch}, "
+                        f"batch {batch_index}",
+                        flush=True,
+                    )
+                    continue
+                scaled.backward()
+                accumulated += 1
+                if accumulated == grad_accum:
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_grad_norm
+                    )
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                    optimizer_step += 1
+                    accumulated = 0
+                for name, loss in losses.items():
+                    loss_sums[name] = loss_sums.get(name, 0.0) + float(
+                        loss.item()
+                    )
+                batches += 1
+                if batch_index == 1 or batch_index % log_every == 0 or batch_index == len(train_loader):
+                    elapsed = time.time() - start_time
+                    print(
+                        f"[FT epoch {epoch} {batch_index}/{len(train_loader)}] "
+                        f"loss={loss_sums['total'] / max(batches, 1):.5f} "
+                        f"enc_lr={optimizer.param_groups[0]['lr']:.2e} "
+                        f"head_lr={optimizer.param_groups[-1]['lr']:.2e} "
+                        f"{batch_index * train_loader.batch_size / max(elapsed, 1e-9):.1f} samples/s",
+                        flush=True,
+                    )
+            if accumulated:
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_grad_norm
+                )
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                optimizer_step += 1
+
+            train_losses = {
+                name: value / max(batches, 1)
+                for name, value in loss_sums.items()
+            }
+            improved = record_epoch(epoch, train_losses, time.time() - start_time)
+            if not improved:
+                no_improvement += 1
+                if patience and no_improvement >= patience:
+                    print(f"early stopping after {patience} epochs without improvement")
+                    break
+    return best_score, history
+
     with open(metrics_path, metrics_mode) as metrics_file:
         if write_resume_history:
             for row in history:

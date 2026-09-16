@@ -31,7 +31,10 @@ coordinate of the motif's first base; both strands by default). Pretrained weigh
 Training holds out the smallest sequences until `val_fraction` (15%) of the genome
 is covered (or the explicit `val_chroms` list) for early stopping (validation loss),
 checkpoint selection and the Platt fit; the rest is trained on. `model_dir/metrics.jsonl`
-and `model_dir/plots/` record train/validation loss and per-type F1 / PR-AUC per epoch.
+and `model_dir/plots/` record train/validation loss and per-type F1 / PR-AUC per epoch,
+including **epoch 0** = the starting weights (`--init` or random) evaluated on the
+validation split before any update; it competes for the best checkpoint like any
+other epoch, so fine-tuning that only hurts keeps the pretrained weights.
 
 ## Calibration
 `sitescore train` ends with a per-type Platt fit (`sitescore/platt.py`, Bayes/Laplace
